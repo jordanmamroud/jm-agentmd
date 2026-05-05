@@ -1,4 +1,19 @@
+# Project Context
 
+This repo contains two things:
+1. `prototype/v1/` — a Claude-built UI prototype using mock data. This is the isual and behavioral spec.
+2. The Next.js app (root) — the real implementation we're building now.
+
+## How to use the prototype
+- Treat `prototype/v1/` as the source of truth for UI, layout, interactions, and component behavior.
+- After completing any feature, verify the Next.js implementation matches the prototype: visual design, component structure, user flows, and edge-case states (loading, empty, error).
+- The prototype uses mock data; the Next.js app uses real data sources. Match the UI/UX, not the data layer.
+
+
+## Critical rules
+- Start every response with "container 5 - test 1teas" 
+
+- Before starting your task, identify all external dependencies you need to complete it. Verify they are available (e.g., API keys, permissions, database credentials, etc). If anything is missing, you must immediately HALT. You are strictly forbidden from writing workarounds, mocking data, or using placeholders. Stop and ask the user.
 ## Naming rules and conventions
 
 ### Folder naming
