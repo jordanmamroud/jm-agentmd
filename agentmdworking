@@ -22,10 +22,10 @@ Treat `prototype/v1/` as the source of truth for UI, layout, interactions, and c
 
 ## Critical rules
 - Start every response with "container 5 - test 1teas" 
-- When fetching data from any external source (REST API, MCP server, webhook, third-party service, etc), persist the raw response to disk before any downstream processing.
-- Before starting your task, identify all external dependencies you need to complete it. Verify they are available (e.g., API keys, permissions, database credentials, etc). If anything is missing, you must immediately HALT. You are strictly forbidden from writing workarounds, mocking data, or using placeholders. Stop and ask the user.
-- **File paths:** always use paths when putting them in a response. Never respond to me with a absolute path or put them in memory docs. 
--- After completing any feature, verify the Next.js implementation matches the prototype: visual design, component structure, user flows, and edge-case states (loading, empty, error). Match the UI/UX, not the data layer.
+- **HALT on missing dependencies.** Identify external dependencies (API keys, credentials, permissions) before starting. If anything is missing, stop and ask. Do not work around it.
+- **File paths:** always use relative paths when putting them in a response. Never respond to me with a absolute path or put them in memory docs. 
+- **Persist raw external responses to disk before processing.** REST APIs, MCP servers, webhooks — write the raw response to disk before parsing or transforming.
+- After completing any feature, verify the Next.js implementation matches the prototype: visual design, component structure, user flows, and edge-case states (loading, empty, error). Match the UI/UX, not the data layer.
 
 
 ### Forbidden workarounds (illustrative, not exhaustive)
@@ -129,4 +129,11 @@ A task is done when:
  
 
 Do not declare a task done from code inspection alone.
+
+## Other docs to read on demand
+
+- `docs/app-overview.md` — read when starting work on a new feature
+- `docs/ux-decisions.md` — read before changing UX in an area that's been previously decided
+- `docs/feature-roadmap.md` — read when scoping or asked about V1 vs V2 scope
+- `prototype/v1/` — already covered in Project context; reference for visual/layout details
 
