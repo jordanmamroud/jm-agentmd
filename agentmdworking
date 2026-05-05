@@ -1,14 +1,15 @@
-# Project Context
 
+## Response prefix
+- Start every response with `container 5 - test 1teas` so the user can verify you read this file.
+
+
+## Project context
+ 
 This repo contains two things:
-1. `prototype/v1/` — a Claude-built UI prototype using mock data. This is the isual and behavioral spec.
-2. The Next.js app (root) — the real implementation we're building now.
-
-## How to use the prototype
-- Treat `prototype/v1/` as the source of truth for UI, layout, interactions, and component behavior.
-- After completing any feature, verify the Next.js implementation matches the prototype: visual design, component structure, user flows, and edge-case states (loading, empty, error).
-- The prototype uses mock data; the Next.js app uses real data sources. Match the UI/UX, not the data layer.
-
+ 
+1. `prototype/v1/` — a Claude-built UI prototype using mock data. Visual and behavioral spec.
+2. The Next.js app at the repo root — the real implementation.
+Treat `prototype/v1/` as the source of truth for UI, layout, interactions, and component behavior. The prototype uses mock data; the real app uses real data sources. Match the UI/UX, not the data layer.
 
 ## Tech Stack
 - Framework: Next.js (stable)
@@ -24,8 +25,13 @@ This repo contains two things:
 - When fetching data from any external source (REST API, MCP server, webhook, third-party service, etc), persist the raw response to disk before any downstream processing.
 - Before starting your task, identify all external dependencies you need to complete it. Verify they are available (e.g., API keys, permissions, database credentials, etc). If anything is missing, you must immediately HALT. You are strictly forbidden from writing workarounds, mocking data, or using placeholders. Stop and ask the user.
 - **File paths:** always use paths when putting them in a response. Never respond to me with a absolute path or put them in memory docs. 
+-- After completing any feature, verify the Next.js implementation matches the prototype: visual design, component structure, user flows, and edge-case states (loading, empty, error). Match the UI/UX, not the data layer.
+
 
 ### Forbidden workarounds (illustrative, not exhaustive)
+
+When a dependency is missing, you must NOT:
+
 - Mocking, stubbing, or faking the missing piece
 - Substituting a different library, model, service, or framework
 - Generating placeholder, synthetic, sample, or example data in place of real data
@@ -35,142 +41,64 @@ This repo contains two things:
 - Skipping the step silently or marking it "done"
 - Implementing a stub "for now" that returns plausible output
 
+Stop and ask instead.
+
+## Tech stack
+ 
+- Next.js (latest stable, App Router only — no Pages Router)
+- TypeScript strict mode
+- Tailwind CSS + shadcn/ui (primitives in `components/ui/`)
+- SQLite + Drizzle ORM (`better-sqlite3`)
+- Zod validates all server action inputs and env vars
+- pnpm
+
+## Commands
+ 
+- Dev server: `pnpm dev`
+- Typecheck: `pnpm tsc --noEmit`
+- Lint: `pnpm lint` (if configured)
+- Test (only when explicitly asked): `pnpm test`
+- DB push (dev): `pnpm db:push`
+- DB generate migration: `pnpm db:generate`
+- DB run migrations: `pnpm db:migrate`
+- DB GUI: `pnpm db:studio`
+- Refactor day: `pnpm refactor-day` (jscpd + knip)
+
+## File placement (one rule)
+ 
+New code goes in the closest private folder to the route that uses it, unless it belongs in `src/db/` or `src/lib/`.
+ 
+- New UI → `app/<route>/_components/`
+- New logic → `app/<route>/_lib/`
+- New server action → `app/<route>/actions.ts` (one file per route, multiple exports)
+- New DB column or table → `src/db/schema.ts`
+- New env var → `src/lib/env.ts`
+
+When unsure between two locations, pick the smaller blast radius (the route folder, not `src/`).
+
+## Promotion to `src/`
+ 
+**Never promote on your own.** Do not move code from `app/<route>/` to `src/` as part of feature work, bug fixes, or cleanup. Do not promote because something "feels reusable" or because you noticed two routes doing similar things. Promotion only happens during explicit refactor sessions the user initiates.
 
 
-## Naming rules and conventions
+## Naming rules
+ 
+- Standard conventions (kebab-case, camelCase, PascalCase, SCREAMING_SNAKE, `is`/`has` boolean prefixes) apply automatically. Don't abbreviate domain nouns: `searchTerms` not `terms`, `negativeKeyword` not `negKw`. Only the opinionated rules:
+- UI Label Rules: Use Sentence case (not Title Case). Verb-led, specific action buttons — "Start classification run", not "Submit". Empty/loading/error states need real copy — never ship "Loading…", "Something went wrong", or "No data".
 
-### Folder naming
+### Folder Naming Rules
+ 
+- Cap at 3 words. Longer probably means two features.
+- Verb-led for workflow routes (`upload-csv/`, `review-runs/`); noun-led for resource routes (`credentials/`, `guardrails/`).
+- Avoid bucket verbs: `manage-`, `handle-`, `process-`. They signal a missing success state.
+- Strip project context. If most siblings have `ga-` in them, drop it from folders — keep it in file names where they need to stand alone in grep.
+- Fixed Next.js names: `app/`, `_components/`, `_lib/`, `[id]`, `(group)`.
 
-Folders live in a hierarchy. Unlike files (which appear in imports, stack
-traces, and grep results detached from their path), folders are always
-read with their parent visible. Name them accordingly.
-
-- A folder may assume its immediate parent's role. A folder under
-  `src/features/` is a feature; you don't need to encode that.
-- A folder may NOT assume the project's domain. Name the specific
-  workflow, not the noun the whole app shares.
-- If a token appears in most sibling folders, it is project context,
-  not a distinguisher. Remove it from the folder name. Keep it in the
-  file names inside, where names travel and need to stand alone.
-- Cap folder names at 3 words. If you cannot, the folder probably
-  contains two features and should be split.
-- Lead with a verb when the folder represents a workflow
-  (`upload-csv/`, `review-runs/`). Use a noun when it represents a
-  surface or resource (`credentials/`, `guardrails/`). Don't mix —
-  pick the form that matches what's inside.
-- Avoid `manage-`, `handle-`, and other bucket verbs. They signal the
-  folder lacks a clear success state, which by your feature-folder
-  rules means it shouldn't exist as one folder.
-
-
-### Files
-- kebab-case: `parse-search-terms-csv.ts`, `classification-runs-history-table.tsx`
-- Verb-led when the file *does* something: `parse-`, `validate-`, `create-`,
-  `update-`, `list-`, `get-`, `start-`, `export-`, `rotate-`
-- Noun-led when the file *describes* something (a record, a type, a status)
-- Required suffix tags so the file's role is legible in any tree, import,
-  or grep result:
-  - `-action.ts` — Next.js Server Action (`"use server"`)
-  - `-record.ts` — entity row shape
-  - `-status.ts` — enum / status type
-  - `-page.tsx` — Next.js page or page-level component
-  - `-table.tsx`, `-form.tsx`, `-modal.tsx`, `-panel.tsx`, `-chart.tsx`,
-    `-sidebar.tsx`, `-editor.tsx`, `-grid.tsx` — UI components, suffix
-    matches the visual shape
-- Migrations: numbered prefix, kebab body: `0001-create-classification-run-tables.sql`
-
-### Function naming rules
-- camelCase, verb-led: `parseGoogleAdsSearchTermsCsv`,
-  `validateNegativeKeywordCandidates`
-- Booleans prefixed `is`, `has`, `can`, `should`: `isCsvHeaderRow`,
-  `hasValidGuardrails`
-- One file = one primary export. The export name matches the file name
-  (kebab → camel). `parse-search-terms-csv.ts` exports `parseSearchTermsCsv`.
-
-### Variables naming rules
-- camelCase
-- Booleans: same `is`/`has`/`can`/`should` prefixes
-- True constants (compile-time, never reassigned): `SCREAMING_SNAKE_CASE`
-- Do not abbreviate domain nouns: `searchTerms` not `terms`,
-  `negativeKeyword` not `negKw`, `classificationRun` not `run`
-
-### Components naming rules
-- PascalCase, name matches file name (kebab → Pascal):
-  `csv-search-terms-upload-modal.tsx` exports `CsvSearchTermsUploadModal`
-- Props type lives in the same file as `<ComponentName>Props`
-
-### Types naming rules
-- PascalCase, suffixed by role:
-  - `Record` — DB row shape
-  - `Input` / `Output` — action params / returns
-  - `Props` — component props
-  - `Status` — enum
-  - `Config` — settings shape
-  - `State` — feature/UI state machines
-
-### UI labels naming rules
-- Sentence case, never Title Case: "Save changes", not "Save Changes"
-- Verb-led for action buttons: "Save changes", "Delete run", "Rotate credential"
-- Specific over generic: "Submit" → "Start classification run"
-- Empty, loading, and error states get specific copy. Never ship "Loading…",
-  "Something went wrong", or "No data".
-
-
-
-## Project architecture
-
-This project uses a Next.js + FSD-style vertical-slice architecture. Goals: clean feature boundaries, downward-only imports, locality of code, parallel-safe development. Prefer explicit structure over clever abstraction.
-
-- Default to keeping code inside the feature slice (`src/features/<feature>/**`).
-- Expect single-feature utilities to live inside the feature for a while.
-- If extraction would break feature independence or require threading complex config, duplicate instead.
-- Features may depend on core/entities. Core/entities must never depend on features.
-- Prefer the smallest structure that preserves clean boundaries. Do not create deep trees for hypothetical future systems. Do not create `shared/` folders for speculative reuse. If you are guessing, the structure is probably too deep. Start local. Extract later.
-- Imports only flow DOWNWARD. Features can import from Core/Entities and Shared, but NEVER from other features.
-
-
-### Feature folders: `src/features/**`
-When to create a feature folder inside `src/features/**`? It deserves a feature folder only if all these are:
-- A real user would say: "I am doing this now."
-- One clear success state.
-- Bounded workflow with a hard start and stop.
-- Most of its UI, state, rules, and side effects are specific to this workflow.
-- One agent could build it without dragging half the codebase with them.
-
-Inside a feature, prefer:
-- `ui/` — React components and styling
-- `server/` — Server Actions and feature-specific server logic
-- `lib/` — feature-local helpers
-- `types/` — feature-local types
-
-- Do **not** create feature folders for: generic pages (`dashboard`, `settings`), internal engines (`classification-engine`), vague buckets (`workspace-admin`, `integrations`).
-
-
-### `src/core/**`
-Use for **shared business/domain capabilities** that multiple features call.
-
-Examples: classification engine, consensus + validator pipelines, run orchestration, status transition logic.
-
-No React. No Tailwind. No UI.
-
-### `src/entities/**`
-Use for **core business models and their shared logic**.
-
-Examples: `run`, `search-term`, `negative-keyword`, `workspace`, `user`.
-
-Entities are not adjusted to make one feature’s UI easier. UI bends to the domain, not the other way around.
-
-### `src/db/**`
-Use for: schema, migrations, Kysely setup.
-
-No raw SQL outside this folder.
-
-### `src/shared/**`
-Use for **project-agnostic primitives and infrastructure** only.
-
-Examples: design system primitives, third-party SDK/client wrappers, generic UI primitives, env validation, logger, error tracking, app-wide config.
-
-`src/shared/**` must have zero knowledge of business workflows or entities.
+### File Naming Rules
+ 
+**One file = one primary export. Export name matches file name** (kebab → camel/Pascal). `parse-search-terms-csv.ts` → `parseSearchTermsCsv`. `csv-uploader-panel.tsx` → `CsvUploaderPanel`.
+ 
+**Required role suffixes:** `-table.tsx`, `-form.tsx`, `-modal.tsx`, `-record.ts` (DB row shape), `-status.ts` (enum/union). Other shapes (panel, button, chart, sidebar, editor, grid) follow the same pattern when it adds clarity.
 
 
 ## Validation Requirements
@@ -187,7 +115,6 @@ At this early stage, we are relying heavily on UI-first verification rather than
 - **User UI Verification** — the ultimate review surface for actions the agent cannot take itself (e.g., completing OAuth flows).
 
 - For any database write/persistence work, verify the actual database contents directly after the UI flow. A UI success state is not sufficient; confirm with SQLite/admin row counts or targeted DB queries that the expected records were durably stored.
-
 
 
 ### Done criteria
