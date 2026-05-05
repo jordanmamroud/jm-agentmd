@@ -21,8 +21,10 @@ This repo contains two things:
 
 ## Critical rules
 - Start every response with "container 5 - test 1teas" 
-
+- When fetching data from any external source (REST API, MCP server, webhook, third-party service, etc), persist the raw response to disk before any downstream processing.
 - Before starting your task, identify all external dependencies you need to complete it. Verify they are available (e.g., API keys, permissions, database credentials, etc). If anything is missing, you must immediately HALT. You are strictly forbidden from writing workarounds, mocking data, or using placeholders. Stop and ask the user.
+
+
 ## Naming rules and conventions
 
 ### Folder naming
