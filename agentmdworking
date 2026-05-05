@@ -1,0 +1,78 @@
+
+## Naming rules and conventions
+
+### Folder naming
+
+Folders live in a hierarchy. Unlike files (which appear in imports, stack
+traces, and grep results detached from their path), folders are always
+read with their parent visible. Name them accordingly.
+
+- A folder may assume its immediate parent's role. A folder under
+  `src/features/` is a feature; you don't need to encode that.
+- A folder may NOT assume the project's domain. Name the specific
+  workflow, not the noun the whole app shares.
+- If a token appears in most sibling folders, it is project context,
+  not a distinguisher. Remove it from the folder name. Keep it in the
+  file names inside, where names travel and need to stand alone.
+- Cap folder names at 3 words. If you cannot, the folder probably
+  contains two features and should be split.
+- Lead with a verb when the folder represents a workflow
+  (`upload-csv/`, `review-runs/`). Use a noun when it represents a
+  surface or resource (`credentials/`, `guardrails/`). Don't mix —
+  pick the form that matches what's inside.
+- Avoid `manage-`, `handle-`, and other bucket verbs. They signal the
+  folder lacks a clear success state, which by your feature-folder
+  rules means it shouldn't exist as one folder.
+
+
+### Files
+- kebab-case: `parse-search-terms-csv.ts`, `classification-runs-history-table.tsx`
+- Verb-led when the file *does* something: `parse-`, `validate-`, `create-`,
+  `update-`, `list-`, `get-`, `start-`, `export-`, `rotate-`
+- Noun-led when the file *describes* something (a record, a type, a status)
+- Required suffix tags so the file's role is legible in any tree, import,
+  or grep result:
+  - `-action.ts` — Next.js Server Action (`"use server"`)
+  - `-record.ts` — entity row shape
+  - `-status.ts` — enum / status type
+  - `-page.tsx` — Next.js page or page-level component
+  - `-table.tsx`, `-form.tsx`, `-modal.tsx`, `-panel.tsx`, `-chart.tsx`,
+    `-sidebar.tsx`, `-editor.tsx`, `-grid.tsx` — UI components, suffix
+    matches the visual shape
+- Migrations: numbered prefix, kebab body: `0001-create-classification-run-tables.sql`
+
+### Function naming rules
+- camelCase, verb-led: `parseGoogleAdsSearchTermsCsv`,
+  `validateNegativeKeywordCandidates`
+- Booleans prefixed `is`, `has`, `can`, `should`: `isCsvHeaderRow`,
+  `hasValidGuardrails`
+- One file = one primary export. The export name matches the file name
+  (kebab → camel). `parse-search-terms-csv.ts` exports `parseSearchTermsCsv`.
+
+### Variables naming rules
+- camelCase
+- Booleans: same `is`/`has`/`can`/`should` prefixes
+- True constants (compile-time, never reassigned): `SCREAMING_SNAKE_CASE`
+- Do not abbreviate domain nouns: `searchTerms` not `terms`,
+  `negativeKeyword` not `negKw`, `classificationRun` not `run`
+
+### Components naming rules
+- PascalCase, name matches file name (kebab → Pascal):
+  `csv-search-terms-upload-modal.tsx` exports `CsvSearchTermsUploadModal`
+- Props type lives in the same file as `<ComponentName>Props`
+
+### Types naming rules
+- PascalCase, suffixed by role:
+  - `Record` — DB row shape
+  - `Input` / `Output` — action params / returns
+  - `Props` — component props
+  - `Status` — enum
+  - `Config` — settings shape
+  - `State` — feature/UI state machines
+
+### UI labels naming rules
+- Sentence case, never Title Case: "Save changes", not "Save Changes"
+- Verb-led for action buttons: "Save changes", "Delete run", "Rotate credential"
+- Specific over generic: "Submit" → "Start classification run"
+- Empty, loading, and error states get specific copy. Never ship "Loading…",
+  "Something went wrong", or "No data".
