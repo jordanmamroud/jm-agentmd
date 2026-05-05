@@ -1,4 +1,3 @@
-
 ## Response prefix
 - Start every response with `container 5 - test 1teas` so the user can verify you read this file.
 
@@ -11,17 +10,7 @@ This repo contains two things:
 2. The Next.js app at the repo root — the real implementation.
 Treat `prototype/v1/` as the source of truth for UI, layout, interactions, and component behavior. The prototype uses mock data; the real app uses real data sources. Match the UI/UX, not the data layer.
 
-## Tech Stack
-- Framework: Next.js (stable)
-- UI: React (implied by Next.js)
-- Language: TypeScript
-- Styling: Tailwind CSS
-- UI primitives: shadcn/ui
-- Database: SQLite
-
-
 ## Critical rules
-- Start every response with "container 5 - test 1teas" 
 - **HALT on missing dependencies.** Identify external dependencies (API keys, credentials, permissions) before starting. If anything is missing, stop and ask. Do not work around it.
 - **File paths:** always use relative paths when putting them in a response. Never respond to me with a absolute path or put them in memory docs. 
 - **Persist raw external responses to disk before processing.** REST APIs, MCP servers, webhooks — write the raw response to disk before parsing or transforming.
@@ -32,14 +21,14 @@ Treat `prototype/v1/` as the source of truth for UI, layout, interactions, and c
 
 When a dependency is missing, you must NOT:
 
-- Mocking, stubbing, or faking the missing piece
-- Substituting a different library, model, service, or framework
-- Generating placeholder, synthetic, sample, or example data in place of real data
-- Hardcoding values that should come from the missing source
-- Catching the error and continuing with degraded behavior
-- Leaving a `TODO` / `FIXME` and moving past the step
-- Skipping the step silently or marking it "done"
-- Implementing a stub "for now" that returns plausible output
+- Mock, stub, or fake the missing piece
+- Substitute a different library, model, service, or framework
+- Generate placeholder, synthetic, sample, or example data in place of real data
+- Hardcode values that should come from the missing source
+- Catch the error and continue with degraded behavior
+- Leave a `TODO` / `FIXME` and move past the step
+- Skip the step silently or mark it "done"
+- Implement a stub "for now" that returns plausible output
 
 Stop and ask instead.
 
@@ -136,4 +125,3 @@ Do not declare a task done from code inspection alone.
 - `docs/ux-decisions.md` — read before changing UX in an area that's been previously decided
 - `docs/feature-roadmap.md` — read when scoping or asked about V1 vs V2 scope
 - `prototype/v1/` — already covered in Project context; reference for visual/layout details
-
