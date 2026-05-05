@@ -1,0 +1,234 @@
+# Project Context
+
+This repo contains two things:
+1. `prototype/v1/` — a Claude-built UI prototype using mock data. This is the visual and behavioral spec.
+2. The Next.js app (root) — the real implementation we're building now.
+
+## How to Use the Prototype
+
+- Treat `prototype/v1/` as the source of truth for UI, layout, interactions, and component behavior.
+- After completing any feature, verify the Next.js implementation matches the prototype: visual design, component structure, user flows, and edge-case states (loading, empty, error).
+- The prototype uses mock data; the Next.js app uses real data sources. Match the UI/UX, not the data layer.
+
+## Tech Stack
+
+- Framework: Next.js (stable)
+- UI: React (implied by Next.js)
+- Language: TypeScript
+- Styling: Tailwind CSS
+- UI primitives: shadcn/ui
+- Database: SQLite
+
+---
+
+## Before Every Task
+
+- Before starting, list every external dependency the task requires (API keys, credentials, DB access, third-party services).
+- Verify each dependency is available before writing a single line of code.
+- If anything is missing: HALT immediately. Do not proceed.
+- MUST NOT write workarounds, mocks, or placeholders — stop and ask the user.
+- When fetching data from any external source (REST API, MCP server, webhook, third-party service), persist the raw response to disk before any downstream processing.
+- **File paths:** always use relative paths in responses and memory docs — never absolute paths.
+
+### Forbidden Workarounds (illustrative, not exhaustive)
+
+- Mocking, stubbing, or faking the missing piece
+- Substituting a different library, model, service, or framework
+- Generating placeholder, synthetic, sample, or example data in place of real data
+- Hardcoding values that should come from the missing source
+- Catching the error and continuing with degraded behavior
+- Leaving a `TODO` / `FIXME` and moving past the step
+- Skipping the step silently or marking it "done"
+- Implementing a stub "for now" that returns plausible output
+
+---
+
+## Naming
+
+### Folder Naming
+
+Folders live in a hierarchy. Unlike files (which appear in imports, stack
+traces, and grep results detached from their path), folders are always
+read with their parent visible. Name them accordingly.
+
+- A folder may assume its immediate parent's role. A folder under
+  `src/features/` is a feature; you don't need to encode that.
+- A folder may NOT assume the project's domain. Name the specific
+  workflow, not the noun the whole app shares.
+- If a token appears in most sibling folders, it is project context,
+  not a distinguisher. Remove it from the folder name. Keep it in the
+  file names inside, where names travel and need to stand alone.
+- Cap folder names at 3 words. If you cannot, the folder probably
+  contains two features and should be split.
+- Lead with a verb when the folder represents a workflow
+  (`upload-csv/`, `review-runs/`). Use a noun when it represents a
+  surface or resource (`credentials/`, `guardrails/`). Don't mix —
+  pick the form that matches what's inside.
+- Avoid `manage-`, `handle-`, and other bucket verbs — they signal the
+  folder lacks a clear success state, which means it shouldn't exist as one folder.
+
+### Files
+
+- kebab-case: `parse-search-terms-csv.ts`, `classification-runs-history-table.tsx`
+- Verb-led when the file *does* something: `parse-`, `validate-`, `create-`,
+  `update-`, `list-`, `get-`, `start-`, `export-`, `rotate-`
+- Noun-led when the file *describes* something (a record, a type, a status)
+- Required suffix tags so the file's role is legible in any tree, import, or grep result:
+  - `-action.ts` — Next.js Server Action (`"use server"`)
+  - `-record.ts` — entity row shape
+  - `-status.ts` — enum / status type
+  - `-page.tsx` — Next.js page or page-level component
+  - `-table.tsx`, `-form.tsx`, `-modal.tsx`, `-panel.tsx`, `-chart.tsx`,
+    `-sidebar.tsx`, `-editor.tsx`, `-grid.tsx` — UI components, suffix matches the visual shape
+- Migrations: numbered prefix, kebab body: `0001-create-classification-run-tables.sql`
+
+### Functions
+
+- camelCase, verb-led
+
+```ts
+// Correct
+parseGoogleAdsSearchTermsCsv()
+validateNegativeKeywordCandidates()
+
+// Wrong
+csvParser()
+negKwCheck()
+```
+
+- Booleans prefixed `is`, `has`, `can`, `should`: `isCsvHeaderRow`, `hasValidGuardrails`
+- One file = one primary export. The export name matches the file name (kebab → camel):
+  `parse-search-terms-csv.ts` exports `parseSearchTermsCsv`.
+
+### Variables
+
+- camelCase
+- Booleans: same `is`/`has`/`can`/`should` prefixes
+- True constants (compile-time, never reassigned): `SCREAMING_SNAKE_CASE`
+- Do not abbreviate domain nouns:
+
+```ts
+// Correct
+searchTerms, negativeKeyword, classificationRun
+
+// Wrong
+terms, negKw, run
+```
+
+### Components
+
+- PascalCase, name matches file name (kebab → Pascal):
+  `csv-search-terms-upload-modal.tsx` exports `CsvSearchTermsUploadModal`
+- Props type lives in the same file as `<ComponentName>Props`
+
+### Types
+
+- PascalCase, suffixed by role:
+
+```ts
+ClassificationRunRecord   // DB row shape
+CreateRunInput            // action params
+CreateRunOutput           // action returns
+UploadModalProps          // component props
+ClassificationRunStatus   // enum
+WorkspaceConfig           // settings shape
+ClassificationRunState    // feature/UI state machine
+```
+
+### UI Labels
+
+- Sentence case, never Title Case: "Save changes", not "Save Changes"
+- Verb-led for action buttons: "Save changes", "Delete run", "Rotate credential"
+- Specific over generic: "Submit" → "Start classification run"
+- Empty, loading, and error states get specific copy — never ship "Loading…",
+  "Something went wrong", or "No data"
+
+---
+
+## Project Architecture
+
+This project uses a Next.js + FSD-style vertical-slice architecture. Goals: clean feature boundaries, downward-only imports, locality of code, parallel-safe development.
+
+- MUST default to keeping code inside the feature slice (`src/features/<feature>/**`).
+- MUST prefer explicit structure over clever abstraction — never design for hypothetical future systems.
+- MUST NOT create `shared/` folders for speculative reuse — if you are guessing, the structure is probably too deep. Start local. Extract later.
+- If extraction would break feature independence or require threading complex config, duplicate instead.
+- Features may depend on `core/` and `entities/`. Core and entities MUST NEVER depend on features — this would create circular dependencies that break feature independence.
+- Imports only flow DOWNWARD. Features can import from `core/`, `entities/`, and `shared/`, but NEVER from other features.
+
+### Feature Folders: `src/features/**`
+
+A workflow deserves a feature folder only if all of these are true:
+
+- A real user would say: "I am doing this now."
+- One clear success state.
+- Bounded workflow with a hard start and stop.
+- Most of its UI, state, rules, and side effects are specific to this workflow.
+- One agent could build it without dragging half the codebase with them.
+
+Inside a feature, prefer:
+
+- `ui/` — React components and styling
+- `server/` — Server Actions and feature-specific server logic
+- `lib/` — feature-local helpers
+- `types/` — feature-local types
+
+Do NOT create feature folders for: generic pages (`dashboard`, `settings`), internal engines (`classification-engine`), vague buckets (`workspace-admin`, `integrations`).
+
+### `src/core/**`
+
+Use for **shared business/domain capabilities** that multiple features call.
+
+Examples: classification engine, consensus + validator pipelines, run orchestration, status transition logic.
+
+- MUST NOT contain React, Tailwind, or any UI — core logic must be testable and portable without a render environment.
+
+### `src/entities/**`
+
+Use for **core business models and their shared logic**.
+
+Examples: `run`, `search-term`, `negative-keyword`, `workspace`, `user`.
+
+- Entities are not adjusted to make one feature's UI easier — UI bends to the domain, not the other way around.
+
+### `src/db/**`
+
+Use for: schema, migrations, Kysely setup.
+
+- MUST NOT write raw SQL outside this folder — Kysely enforces type safety; raw SQL bypasses it silently.
+
+### `src/shared/**`
+
+Use for **project-agnostic primitives and infrastructure** only.
+
+Examples: design system primitives, third-party SDK/client wrappers, generic UI primitives, env validation, logger, error tracking, app-wide config.
+
+- MUST have zero knowledge of business workflows or entities.
+
+---
+
+## Verifying Your Work
+
+"Done" means the task is verifiable in the UI. Verify your own work in the UI before declaring the task done — not "the code looks right."
+
+At this early stage, rely on UI-first verification rather than automated test suites. Do not write or run unit or integration tests unless explicitly requested.
+
+### Verification Layers
+
+- **Lint + typecheck** — run on every change to catch basic errors.
+- **Agent UI Verification** — start the local dev server (`npm run dev`), wait for it to compile, then use browser tools to navigate to `localhost:3000`, interact with the UI, click buttons, and verify UI state before declaring done.
+- **Server Log Verification** — after interacting with the UI, check the terminal running the dev server to ensure no hidden errors, warnings, or unhandled promise rejections were thrown.
+- **User UI Verification** — the ultimate review surface for actions the agent cannot take itself (e.g., completing OAuth flows).
+- **Database Verification** — for any DB write/persistence work, verify actual database contents directly after the UI flow. A UI success state is not sufficient; confirm with SQLite row counts or targeted DB queries that the expected records were durably stored.
+
+### Done Criteria
+
+A task is done when ALL of the following are true:
+
+- Lint and typecheck pass.
+- Necessary UI components are built and backend logic is testable visually.
+- The agent has actively exercised and verified the task in the running UI using a browser tool.
+- The agent has verified the terminal logs are clear of hidden errors.
+- The Next.js implementation matches the prototype: visual design, component structure, user flows, and edge-case states (loading, empty, error). Match the UI/UX, not the data layer.
+
+Do not declare a task done from code inspection alone.
