@@ -1,0 +1,994 @@
+<!--
+Reconstructed from screenshots of Peter Steinberg doing a live coding project.
+This is a first-pass stitched draft. Cropped or uncertain text is marked inline.
+-->
+
+<!--
+Added from later-discovered screenshot that appears to belong at the start.
+Top heading above this section is cropped in the screenshot.
+-->
+
+[Heading above this point is cropped in the screenshot]
+
+The year is 2025.
+
+- **NEVER** delete or revert files unless explicitly requested in this session.
+- Moving/renaming and restoring files is allowed.
+- Do not run destructive git operations (e.g., `reset --hard`, `rm`, `checkout/restore to an older commit`) unless explicitly requested.
+- Always double-check git status before any commit
+- No quick fixes - properly fix TypeScript errors and code issues
+- Use proper TypeScript types instead of `any`
+- **AVOID TYPE ASSERTION ANTI-PATTERNS:** Never use `as unknown as` or other unsafe type assertions
+  - Instead create proper type transformers in `src/lib/validation/transformers.ts`
+  - Use type guards and proper validation for type conversions
+  - Example: Create `transformUserV2ToTwitterApiUser()` instead of `user as TwitterApiUser`
+- Be critical of bad practices and challenge poor architectural decisions
+
+## 🚫 CRITICAL ANTIPATTERN: "Handle Both Formats"
+
+**NEVER write code that handles multiple data formats like this:**
+
+```ts
+// ❌ ANTIPATTERN - "Handle both" creates technical debt
+const date = data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt);
+const authorId = data.authorId || data.author_id; // Both camelCase and snake_case
+const isoString = userData.createdAt instanceof Date
+  ? userData.createdAt.toISOString()
+  : userData.createdAt; // NEVER DO THIS!
+```
+
+### Why this is wrong:
+
+- Violates single source of truth principle
+- Creates maintenance burden across codebase
+- Hides the real architectural issue
+- Leads to inconsistent data handling
+- **THESE ARE HACKS, NOT SOLUTIONS**
+
+### The correct approach:
+
+- **ALWAYS fix the root cause** (boundary transformation, serialization, API response structure)
+- Maintain clean data flow with single format
+- Respect the established Zod boundary architecture
+- Use proper validation/transformation at entry points
+- **Never compromise on data type consistency**
+
+## Code References Format
+
+When referencing code locations, MUST use VS Code clickable format:
+
+- `path/to/file.ts:123` (single line)
+- `path/to/file.ts:123-456` (range)
+
+## 📦 Package Manager - PNPM ONLY
+
+**THIS PROJECT USES PNPM EXCLUSIVELY - NEVER USE NPM OR YARN**
+
+## 🏗️ Development Environment
+
+```bash
+pnpm env:dev      # Local development (isolated)
+pnpm env:prod     # Production-like (BE CAREFUL - real data!)
+pnpm env:status   # Check current environment
+pnpm run dev      # Start dev server (ONLY when user requests)
+```
+
+⚠️ **CRITICAL: The user usually has a dev server already running on localhost:3000**
+
+- **NEVER start your own dev server unless explicitly asked**
+- **NEVER kill or restart the existing server**
+- Always use the existing localhost:3000 for testing
+- If you accidentally start a server, immediately kill it
+- The user will get angry if you kill their running server!
+
+### Local Mode:
+
+- `pnpm run dev` automatically starts Docker containers (PostgreSQL + CloudBeaver)
+- **IMPORTANT:** Never manually start Docker containers - `pnpm run dev` handles this automatically
+- PostgreSQL runs on localhost:5432
+- CloudBeaver UI available at localhost:8080
+- Completely isolated from production
+- To reset the database: Stop dev server first, then run `pnpm run db:reset`
+
+**Production Mode:** Connects to production Neon database
+
+### Environment Files:
+
+- `.env` - Active configuration (Next.js reads this)
+- `.env.prod-like` - Vercel Preview environment template
+- `.env.dev-local` - Local development template
+- `docker-compose.dev.yml` - Local services configuration
+- `.env.backup` - Automatic backup when switching
+
+## 🗄️ Database Management
+
+### Kysely with CamelCase
+
+**Kysely Docs:** https://kysely.dev/llms-full.txt (comprehensive type-safe SQL query builder docs)
+
+```ts
+// ✅ CORRECT - Use camelCase (plugin converts to snake_case)
+db.selectFrom('timelineSnapshots').where('userId', '=', id)
+
+// ❌ WRONG - Don't use snake_case
+db.selectFrom('timeline_snapshots').where('user_id', '=', id)
+```
+
+**Field Naming:** Always use camelCase in TypeScript/JavaScript code. Database uses snake_case, Kysely's CamelCasePlugin handles conversion automatically.
+
+**Relationship Tracking (follow graph):** We track follows using directional edges and snapshots:
+
+- `follow_edges`: current, directional edges per tenant and observer (`inbound/outbound`) with `is_active`.
+- `follow_snapshots` + `follow_snapshot_members`: normalized list snapshots (followers/following) used to diff edges.
+- `follow_events`: append-only audit of `started/ended` edge transitions (idempotent per snapshot/run).
+- `mutuals_current` (VIEW): live mutuals derived from active inbound+outbound edges; zero staleness.
+
+Writes happen via snapshot writers: insert a snapshot, then call the diff helper to upsert ON edges and (for completed snapshots) inactivate OFF edges. Do not write per-row "relationship masks."
+
+**Type Preference:** Use direct Kysely types instead of wrapper types for better clarity:
+
+```ts
+// ✅ PREFERRED - Clear and explicit
+tweets: Array<Omit<Insertable<DB['tweets']>, 'updatedAt'>>
+
+// ❌ AVOID - Indirection through wrapper types
+tweets: Array<NewTweet>
+```
+
+Wrapper types like `NewTweet` or `NewDBTweet` hide what table you're working with and add unnecessary abstraction.
+
+**Query Preference:** Use Kysely's query builder for all database operations unless raw SQL provides significant performance benefits. Examples where raw SQL is appropriate:
+
+- Bulk operations with UNNEST (PostgreSQL-specific)
+- Complex window functions
+- Geospatial operations with PostGIS (`ST_*`, `GIST/BRIN`)
+- Full-text search with `ts_rank`
+
+## 🐦 Tweet Storage (Unified Helpers)
+
+- Canonical helpers
+  - `batchUpsertTweets(rows, dbh?)`: Accepts `Insertable<DB['tweets']>[]` only. Conflict logic preserves existing values when a field is omitted and updates when provided; `updatedAt` bumps only when data actually changes (`IS DISTINCT FROM` guard).
+  - `upsertTweetsFromBoundary(tweets, includes?, dbh?)`: accepts validated camelCase `TwitterApiTweet[]`. Transforms via `transformTwitterApiTweetForDb(...)` and delegates to `batchUpsertTweets(...)`. If `includes.media` is provided (array or Map keyed by `media_key`), performs a single UNNEST update to set `media` and `mediaMetadata`.
+- No legacy adapter
+  - All callers must parse unknown → boundary and use `upsertTweetsFromBoundary(...)`. This ensures a single write path and avoids format drift.
+- Enforcement
+  - Do not write `insertInto('tweets')` or chain `.onConflict()` outside `src/lib/db/**` (AST-grep rules: `no-tweets-upsert-outside-db`, `no-tweets-onConflict-outside-db`).
+  - Avoid "handle both" patterns; always transform once at the boundary.
+- Metrics
+  - `likeCount`, `retweetCount`, `replyCount`, `quoteCount`, `bookmarkCount`, `impressionCount` supported end-to-end. Conflict logic preserves DB values when inputs omit metrics.
+- Media
+  - Prefer `includes.media` for enrichment. The boundary helper handles bulk UNNEST updates for performance.
+
+### Persistence Do's and Don'ts
+
+- Do not convert boundary tweets back to `TweetV2` for persistence. Keep V2 strictly for external API calls and tests. Persist via:
+  - `upsertTweetsFromBoundary(boundaryTweets, { media })` → `transformTwitterApiTweetForDb` → `batchUpsertTweets`
+- Media enrichment is centralized:
+  - Use `buildMediaUpdateArrays(tweets: TwitterApiTweet[], mediaByKey: Map<...>)` for UNNEST arrays
+  - Prefer boundary-first helper `buildTweetUpdateArraysFromBoundary(...)` over raw variants
+- DB helper signature convention (apply across `src/lib/db/**`):
+  - Last argument is always `dbh?: Kysely<DB> | Transaction<DB>` (accept either a pool or a transaction)
+
+## 🧪 Testing
+
+**Framework:** This project uses Vitest for all testing.
+
+### Agent Policy: No Watch/Interactive Modes
+
+- Automation must not use watch/interactive flags; they hang indefinitely.
+- Use run-once commands only; prefer `pnpm -s test` for units.
+
+**Forbidden (hangs):**
+
+- `pnpm test -w`, `pnpm -s test -w`, `pnpm test --watch`
+- `pnpm vitest` (no args), `pnpm vitest -w`, `pnpm vitest --watch`
+- `pnpm playwright test --ui`
+
+**Allowed (run once):**
+
+- `pnpm -s test`
+- `pnpm vitest run`
+- `pnpm test:unit`, `pnpm test:integration`, `pnpm test:all`, `pnpm test:ci`
+
+For CI output tuning, use reporters, e.g. `pnpm vitest run --reporter=dot`.
+
+### Test Categories and Coverage
+
+[Content between screenshots appears partially cropped here.]
+
+## 🔎 AST-Grep (Structural Search & Codemods)
+
+### What it is:
+
+- Structural code search, lint, and codemods using tree-sitter AST. Complements Biome (format + curated JS/TS lint) with custom, pattern-driven rules and safe rewrites.
+
+### Why we use it:
+
+- Enforce core policies: no `as unknown as`, no `as any`, no direct `process.env` outside the T3 env boundary, no direct `new TwitterApi(...)`.
+- Fast, repo-wide AST queries and targeted refactors during migrations.
+
+### Quick commands:
+
+- Search: `sg run -p 'process.env.$NAME' -C 2 src`
+- Rewrite (preview): `sg run -p 'process.env.$NAME' -r 'env.$NAME' --interactive src`
+- Scan with rules: `pnpm run lint:ast-grep` (all) or `pnpm run lint:ast-grep:strict` (low-noise)
+
+### How To Use (Concise Guide)
+
+- Preview first: `sg run -p '<pattern>' -C 1 src` (never write on first pass).
+- Refactor safely: add a replacement and `--interactive` to confirm each hunk: `sg run -p '<pattern>' -r '<replacement>' --interactive src`.
+- Scope precisely: add globs to include/exclude: `--globs 'src/lib/**' --globs '!src/env.ts'`.
+- Constrain matches: use meta vars + constraints, e.g. `--constraint NAME '!/_/'` for snake_case.
+- Validate: run `pnpm run lint:ast-grep:strict` and `pnpm -s test` after changes.
+
+### Common recipes (copy/paste)
+
+- Env boundary (`process.env` → `env`):
+  - Preview: `sg run -p 'process.env.$NAME' -C 1 src --globs '!src/env.ts'`
+  - Rewrite: `sg run -p 'process.env.$NAME' -r 'env.$NAME' --interactive src --globs '!src/env.ts'`
+- Block direct Twitter API (migrate to service):
+  - Find: `sg run -p 'new TwitterApi($ARGS)' -C 1 src`
+  - Rewrite (guided): `sg run -p 'new TwitterApi($ARGS)' -r '/* use TwitterService.forCurrentUser()/forUser() */' --interactive src`
+- Kysely snake_case tables → camelCase:
+  - Find: `sg run -p "db.$CALL('$NAME')" --constraint CALL '/^(selectFrom|insertInto|updateTable|deleteFrom)$/' --constraint NAME '/_/' -C 1 src`
+  - Fix interactively (supply correct camelCase names per match).
+- Kysely snake_case columns → camelCase:
+  - Find: `sg run -p "db.$CALL('$FIELD', $OP, $VAL)" --constraint CALL '/^(where|orWhere|orderBy|select)$/' --constraint FIELD '/_/' -C 1 src`
+- Anti-casting cleanup:
+  - Find double-cast: `sg run -p '($EXPR as unknown) as $TYPE' -C 1 src`
+  - Action: replace by adding a transformer in `src/lib/validation/transformers.ts` and proper types/guards.
+
+### Pre-commit integration:
+
+- Husky runs a strict subset on staged TS/TSX files only (fast).
+- Rules: `no-double-cast-unknown`, `no-direct-twitterapi`, `no-process-env-outside-env`
+- Excludes `src/env.ts` (boundary file may read `process.env`)
+
+## Profile Upserts (Single Source of Truth)
+
+- Use `batchUpsertProfiles()` for all `profiles` writes (DB-shaped inputs). For follow edges, call `upsertProfilesWithRelationships()` (it delegates to `batchUpsertProfiles()` for the write).
+- Never write ad-hoc `.insertInto('profiles')` or `.onConflict()` outside `src/lib/db/**` — AST-grep enforces this in pre-commit.
+- Metrics: only update when provided; if omitted, existing DB values are preserved (via conflict guards). Do not default with `|| 0` in DB writes.
+
+**Examples:**
+
+- Boundary users → transform → `batchUpsertProfiles([row])`
+- With relationship context → `upsertProfilesWithRelationships(userId, observerProfileId, twitterApiUsers)`
+
+## Tweet Upserts (Single Source of Truth)
+
+- Use `batchUpsertTweets()` for DB-shaped rows. If you have boundary tweets, use `upsertTweetsFromBoundary()` (transforms and delegates).
+- Boundary-first flow: Twitter API → boundary (camelCase, Date types) → DB rows → `batchUpsertTweets()`.
+- Do not convert back to `TweetV2` for DB writes; keep V2 only in read utilities if necessary.
+
+**Examples:**
+
+- Boundary tweets → `upsertTweetsFromBoundary(boundaryTweets, { media })`
+- DB rows → `batchUpsertTweets(rows)`
+
+Pattern references: see AST-grep "Common recipes" above for search and rewrite commands.
+
+**Tips:**
+
+- Use meta variables (`$EXPR`, `$NAME`, `$TYPE`) for flexible matching.
+- Add constraints with `inside`, `has`, `precedes` in rule YAML for precision.
+- Use `--selector` to narrow match to a node kind when needed.
+
+## 📋 Command Behaviors
+
+### `/check` Command
+
+1. Auto-fix linting: `pnpm biome check --write`
+2. Type check: `pnpm type-check`
+3. Run tests: `pnpm test`
+4. Fix all issues and re-run until everything passes
+
+### `/commit` Command
+
+1. Run `git status` to see changes
+2. Stage ONLY files YOU modified in this conversation
+3. Create descriptive commit message
+4. **NEVER** use `git add .` or `git add -A`
+
+## 🚫 Critical Rules
+
+### Code Organization & Contributions
+
+- **Active Contributors:** We must maintain an active contributor ecosystem.
+- **File Length:** We must keep all files under 800 lines of code (LOC). Files must be modular and single-purpose.
+- **Reading Files:** Always read the file in full, do not be lazy. Before making any code changes, start by finding and reading ALL of the relevant files. Never make changes without reading the entire file.
+- **EGO:** Do not make assumptions. Do not jump to conclusions. You are just a Large Language Model, you are very limited. Always consider multiple different approaches, just like a Senior Engineer would.
+
+### Refactoring Philosophy
+
+- **No backwards compatibility** - refactor aggressively
+- **No version suffixes** - update files directly (`timeline.ts` not `timeline-v2.ts`)
+- **No legacy files** - delete old implementations completely
+
+### Git Workflow
+
+🚨 **CRITICAL - NEVER USE `git add -A` or `git add .`** 🚨
+
+- **ABSOLUTELY FORBIDDEN:** Never stage all files at once
+- **ONLY** stage files YOU explicitly modified in this conversation
+- **ALWAYS** use specific file paths: `git add path/to/specific/file.ts`
+- **CHECK** with `git status` before staging anything
+- Other developers may have uncommitted work - DO NOT touch their files
+
+## Twitter API
+
+- Always use `TwitterService.forCurrentUser()` or `TwitterService.forUser()`
+- Never instantiate `TwitterApi` directly
+
+### Twitter App IDs
+
+- Development: Client ID `31299634` (`base64` value visible in screenshot; partially uncertain in reconstruction)
+- Production: Client ID `18238508` (`base64` value visible in screenshot; partially uncertain in reconstruction)
+
+## OpenAI
+
+- Use **GPT-5 only** - GPT-4 and GPT-3.5 are deprecated
+- Available models: `gpt-5`, `gpt-5-mini`, `gpt-5-nano` (released August 7, 2025)
+- Use `openai.responses.create()` NOT `chat.completions.create()`
+- **NOTE:** These GPT-5 models are fully implemented and available in the codebase. Use them as: `openai/gpt-5`, `openai/gpt-5-mini`, `openai/gpt-5-nano`
+
+## 🌍 Environment Variables Management
+
+### Type-Safe Environment Variables with T3 Env + Zod
+
+This project uses `@t3-oss/env-nextjs` for runtime validation and type-safe environment variable management.
+
+### How It Works
+
+All environment variables are defined and validated in `src/env.ts:6-147` with Zod schemas:
+
+```ts
+import { env } from '@/env';
+
+// ✅ Type-safe access with runtime validation
+const dbUrl = env.DATABASE_URL; // Server-side only
+const appUrl = env.NEXT_PUBLIC_APP_URL; // Client-side accessible
+```
+
+### Adding New Environment Variables
+
+1. Add to `.env` file:
+
+```env
+NEW_API_KEY=your_value_here
+```
+
+2. Define in schema (`src/env.ts`):
+
+```ts
+server: {
+  NEW_API_KEY: noNewlines(z.string().min(1)),
+}
+```
+
+3. Map to runtime (`src/env.ts`):
+
+```ts
+runtimeEnv: {
+  NEW_API_KEY: process.env.NEW_API_KEY,
+}
+```
+
+### Key Benefits
+
+- **Build-time validation:** Invalid/missing env vars fail the build
+- **Type safety:** Full TypeScript support with autocomplete
+- **No runtime errors:** Guaranteed valid configuration
+- **Client/server separation:** Prevents accidental server var exposure
+- **Custom validation:** Email formats, URL validation, string lengths, etc.
+
+### Environment Switching
+
+```bash
+pnpm env:dev      # Switch to local development
+pnpm env:prod     # Switch to production-like
+pnpm env:status   # Check current environment
+```
+
+Environment files are automatically managed - never manually edit `.env` directly.
+
+This modern approach eliminates the common `process.env.VARIABLE_NAME` pattern and the associated runtime errors from undefined or malformed environment variables.
+
+## △ Zod Validation Architecture with Codecs
+
+Full documentation: `docs/api-schema.md`
+
+### Core Principle: Transform Once at the Boundary with Codecs
+
+```text
+External APIs (snake_case, ISO strings) → | BOUNDARY CODEC | → App (camelCase, Date objects) → Kysely → DB (snake_case)
+```
+
+### Key Rules
+
+1. **Codec Transformation:** All external data gets validated **AND** transformed using Zod codecs at entry
+2. **Single Internal Format:** App uses `camelCase` + proper types (Date, number, etc.) - no unions or format checking
+3. **Standard Codecs:** Use Zod's built-in codec patterns (`isoDatetimeToDate`, `stringToNumber`, etc.)
+4. **Kysely Handles DB:** CamelCasePlugin auto-converts `camelCase` ↔ `snake_case`
+
+### Directory Structure
+
+```text
+src/lib/validation/
+├── codecs.ts      # Standard Zod codecs (Date, JSON, URL, etc.)
+├── boundaries/    # External validators with codec transformations
+├── core/          # Internal schemas (camelCase + proper types)
+├── database/      # DB schemas (extends core)
+└── api/           # Request/response schemas with codecs
+```
+
+### Correct Pattern with Codecs
+
+```ts
+// ✅ Transform at boundary using codecs
+const TweetResponseSchema = z.object({
+  createdAt: IsoDateCodec,   // ISO string → Date object
+  authorId: z.string(),
+});
+
+const tweet = TweetResponseSchema.decode(rawApiData); // Automatic transformation
+await processTweet(tweet); // Uses Date objects
+
+// ❌ Never do this
+const authorId = tweet.author_id || tweet.authorId; // No format checking!
+const date = new Date(tweet.createdAt); // No manual conversion!
+```
+
+## Migration Goal
+
+- Eliminate all `as any` and `as unknown as` casts
+- Remove all union schemas for format variations
+- Single source of truth per data type
+
+## 🚀 Tech Stack
+
+- **Frontend:** Next.js 15 Canary, React 19 Canary, TypeScript 5, Tailwind CSS v4
+- **Database:** Neon PostgreSQL with Kysely ORM
+- **AI:** OpenAI GPT-5, `text-embedding-3-small`
+- **Auth:** Better Auth with Twitter OAuth 2.0
+- **Background:** Inngest for jobs
+
+## 🔧 Next.js Canary Requirement
+
+**CRITICAL:** This project uses Next.js canary for Partial Pre-Rendering (PPR) support.
+
+### Why Canary?
+
+- **PPR (Partial Pre-Rendering):** Experimental feature requiring latest canary builds
+- **Performance:** Significant rendering optimizations for our analytics dashboard
+- **React 19:** Full support for latest React features
+
+### Rules
+
+- **NEVER** downgrade Next.js from canary to stable
+- **NEVER** disable PPR - upgrade Next.js instead
+- **ALWAYS** use `pnpm add next@canary react@canary react-dom@canary` for updates
+- Monitor breaking changes in canary releases
+
+**Note on versioning (keep us on canary):**
+
+- Set `"next": "canary"` in `package.json` to avoid semver drifting to stable (e.g. `15.5.x` → `15.5.x-canary` by semver).
+- Pin React canary as well (`react`, `react-dom`) via direct deps or `pnpm.overrides` to keep versions aligned.
+
+If PPR errors occur, the fix is **ALWAYS** to upgrade Next.js canary, not disable the feature.
+
+## 🔎 Debugging
+
+### Better Stack Logging
+
+Use the `bslog` CLI for quick queries and tails:
+
+```bash
+bslog tail -n 50                      # Recent logs
+bslog errors --since 1h              # Recent errors
+bslog search "module:timeline" --limit 50
+```
+
+Dashboard: https://logtail.com/ Requires: `NEXT_PUBLIC_LOGTAIL_SOURCE_TOKEN`
+
+### bslog - Better Stack Log Query CLI
+
+**Quick setup:**
+
+```bash
+# Environment variables are in ~/.zshrc
+# If authentication fails, reload with: source ~/.zshrc
+
+# Set default source
+bslog config source sweetistics-dev
+
+# Common queries
+bslog tail -n 20                                # Recent logs
+bslog errors --since 1h                         # Recent errors
+bslog search "authentication" --limit 10       # Search logs
+bslog query '{ logs(level: "error") { dt, message } }'  # GraphQL-style
+```
+
+**Sources available:**
+
+- `sweetistics-dev` - Development logs
+- `sweetistics` - Vercel integration
+- `sweetistics-neon` - Database logs
+
+## Important Notes
+
+- Inngest for jobs: https://www.inngest.com/llms.txt
+- X API Rate Limits: https://docs.x.com/x-api/fundamentals/rate-limits
+- Vercel Pro: Functions can run up to 800 seconds (13 minutes)
+- Test files in `src/__tests__/`
+- Shadcn/ui components in `/src/components/ui/`
+- Schema source of truth: `/db/schema.sql`
+
+## JSONB Queries with Kysely
+
+When querying JSONB fields with Kysely, use `sql.literal()` for proper escaping:
+
+```ts
+// ✅ CORRECT - Use sql.literal() for JSONB containment
+.where(sql`options::jsonb @> ${sql.literal(JSON.stringify({ timeRange }))}::jsonb`)
+
+// ❌ WRONG - Direct template interpolation doesn't escape properly
+.where(sql<boolean>`options @> ${JSON.stringify({ timeRange })}::jsonb`)
+
+// ✅ BETTER - Use helper function from db-helpers.ts
+import { jsonbContains } from '@/lib/db-helpers';
+.where(jsonbContains('options', { timeRange: '6h' }))
+```
+
+## JSONB Storage with Kysely
+
+**CRITICAL:** PostgreSQL JSONB columns automatically handle JSON serialization/deserialization.
+
+```ts
+// ✅ CORRECT - Direct object assignment for JSONB columns
+await db.updateTable('systemAiConfig').set({
+  enabledModels: enabledModels as any, // Pass array/object directly
+  modelConfigs: modelConfigs || {},
+}).execute()
+
+// ❌ WRONG - Don't stringify when storing to JSONB
+await db.updateTable('systemAiConfig').set({
+  enabledModels: JSON.stringify(enabledModels), // Double-stringified!
+}).execute()
+```
+
+## Query Helpers
+
+Use helper functions in `src/lib/db-helpers.ts` for common patterns (based on Kysely relations patterns)
+
+## 📄 Linear CLI Usage
+
+### Essential Commands
+
+```bash
+# List issues (defaults to assigned to you only)
+linear issue list --sort priority
+linear issue list --all-assignees --sort priority   # Show all
+linear issue list --unassigned --sort priority      # Unassigned only
+
+# Create & manage issues
+linear issue create --title "Title" --description "Description"
+linear issue view SWT-123         # Must specify issue ID
+linear issue update SWT-123 --state started    # States: triage, backlog, unstarted, started, completed, canceled
+linear issue update SWT-123 --assignee username
+
+# Open in browser/app
+linear issue list --web           # Open in browser
+linear issue view SWT-123 --app   # Open in Linear app
+```
+
+**Tips:**
+
+- Default list shows only YOUR assigned issues - use `--all-assignees` to see all
+- Add `--no-pager` to disable pagination
+- States: `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`
+- `linear issue view` requires an issue ID (e.g. `SWT-123`) - won't auto-detect from git branch
+
+## API Testing
+
+### X/Twitter API Testing with xl CLI
+
+```bash
+# Local CLI that uses app's auth to avoid token conflicts
+./xl /2/users/me                           # Get authenticated user
+./xl /2/users/by/username/vercel           # Get user by username
+./xl /2/tweets/search/recent -q "query=from:vercel"   # Search tweets
+./xl /2/users/me -c                        # Generate curl command
+./xl /2/users/me -t "token"               # Use specific token
+```
+
+The `xl` CLI automatically fetches tokens from the local database, avoiding OAuth conflicts when testing. See `scripts/xl-README.md` for details.
+
+<!-- There appears to be a gap in the screenshots between ~7:03 and ~7:20. Content may be missing here. -->
+
+# Atlas Database Schema Management
+
+Quick start: start the PostGIS planning DB with `pnpm atlas:dev-db` (runs on 127.0.0.1:5435), then apply schema with `pnpm -s schema:apply`. For prod, set `DIRECT_DATABASE_URL` (with `sslmode=require`) and run `pnpm -s schema:apply:prod`.
+
+Note: the production DB URL lives in `.env.prod-like` as `DIRECT_DATABASE_URL`. Use `pnpm env:prod` to switch `.env` to that template before running prod applies.
+
+Atlas is a language-independent tool for managing and migrating database schemas using modern DevOps principles. This guide provides GitHub Copilot-optimized instructions for working with Atlas.
+
+## Quick Reference
+
+```bash
+# Common Atlas commands
+atlas schema inspect --env <name> --url file://migrations
+atlas migrate status --env <name>
+atlas migrate diff --env <name>
+atlas migrate lint --env <name> --latest 1
+atlas migrate apply --env <name>
+atlas whoami
+```
+
+## Core Concepts and Configurations
+
+### Configuration File Structure
+
+Atlas uses `atlas.hcl` configuration files with the following structure:
+
+```hcl
+// Basic environment configuration
+env "<name>" {
+  url = getenv("DATABASE_URL")
+  dev = "docker://postgres/15/dev?search_path=public"
+  migration {
+    dir = "file://migrations"
+  }
+  schema {
+    src = "file://schema.hcl"
+  }
+}
+```
+
+### Dev database
+
+Atlas utilizes a "dev-database," which is a temporary and locally running database, usually bootstrapped by Atlas. Atlas will use the dev database to process and validate users' schemas, migrations, and more.
+
+Examples of dev-database configurations:
+
+```text
+# When working on a single database schema
+--dev-url "docker://mysql/8/dev"
+--dev-url "docker://postgres/15/db_name?search_path=public"
+--dev-url "sqlite://dev?mode=memory"
+
+# When working on multiple database schemas
+--dev-url "docker://mysql/8"
+--dev-url "docker://postgres/15/dev"
+```
+
+Configure the dev database using HCL:
+
+```hcl
+env "<name>" {
+  dev = "docker://mysql/8"
+}
+```
+
+For more information on additional drivers, extensions, and more, see https://atlasgo.io/concepts/dev-database.
+
+## Environment Variables and Security
+
+✅ **DO:** Use secure configuration patterns
+
+```hcl
+// Using environment variables (recommended)
+env "<name>" {
+  url = getenv("DATABASE_URL")
+}
+
+// Using external data sources
+data "external" "envfile" {
+  program = ["npm", "run", "envfile.js"]
+}
+locals {
+  envfile = jsondecode(data.external.envfile)
+}
+env "<name>" {
+  url = local.envfile.DATABASE_URL
+}
+
+// Using Go CDK runtime variables for secrets
+data "runtimevar" "db_password" {
+  url = "awssecretsmanager://<secret-name>?region=us-east-1"
+}
+env "prod" {
+  url = "postgres://user:${data.runtimevar.db_password}@host:5432/db"
+}
+```
+
+❌ **DON'T:** Hardcode sensitive values
+
+```hcl
+// Never do this
+env "prod" {
+  url = "postgres://user:password123@prod-host:5432/database"
+}
+```
+
+## Schema Sources
+
+### HCL Schema
+
+```hcl
+data "hcl_schema" "<name>" {
+  path = "schema.hcl"
+}
+env "<name>" {
+  schema {
+    src = data.hcl_schema.<name>.url
+  }
+}
+```
+
+### External Schema (ORM Integration)
+
+The `external_schema` data source enables the import of an SQL schema from an external program into Atlas' desired state.
+
+```hcl
+data "external_schema" "drizzle" {
+  program = ["npx", "drizzle-kit", "export"]
+  working_dir = "path/to/Directory" # optional, defaults to the current working directory
+}
+
+data "external_schema" "django" {
+  program = ["python", "manage.py", "atlas-provider-django", "--dialect", "postgresql"]
+}
+
+env "<name>" {
+  schema {
+    src = data.external_schema.django.url
+  }
+}
+```
+
+**Important:**
+
+- The output of the program needs to be complete RAW SQL schema that will bring the database to the desired state. The output should not be a "diff" from a previous state.
+- If you are seeing errors, try isolating the issue, you can run the program directly and see if it's working.
+
+### Composite Schema
+
+A composite schema allows you to combine multiple schemas into a single schema. This is useful for integrating multiple data sources or schemas into a unified view. This is an Atlas Pro feature.
+
+```hcl
+data "composite_schema" "app" {
+  schema "users" {
+    url = data.external_schema.auth_service.url
+  }
+  schema "graph" {
+    url = "ent://ent/schema"
+  }
+  schema "shared" {
+    url = "file://schema/shared.hcl"
+  }
+}
+
+env "<name>" {
+  schema {
+    src = data.composite_schema.app.url
+  }
+}
+```
+
+## Misc Configurations
+
+```hcl
+// CI/CD environment
+env "ci" {
+  lint {
+    git {
+      base = "main" # in CI, lint against the main branch
+    }
+  }
+}
+
+// Anonymous environment, any name will work with --env, but --env is still mandatory
+env {
+  name = atlas.env
+}
+```
+
+## Common Workflows
+
+### 1. Schema Inspection / Visualization
+
+1. Always start by listing tables, don't immediately try to inspect the entire schema.
+2. If you see there are many tables, don't inspect the entire schema at once. Instead, focus on specific tables of interest.
+3. Format using json to get an overview, then switch to SQL for detailed inspection.
+
+**Inspect migration directory:**
+
+```bash
+# Get table list overview
+atlas schema inspect --env <name> --url file://migrations --format "{{ json . }}" | jq ".schemas[].tables[].name"
+
+# Get full SQL schema
+atlas schema inspect --env <name> --url file://migrations --format "{{ sql . }}"
+
+# Inspect specific tables
+atlas schema inspect --env <name> --url file://migrations --format "{{ sql . }}" | grep -A 10 "CREATE TABLE users"
+```
+
+**Inspect live database:**
+
+```bash
+# Requires database URL in atlas.hcl
+atlas schema inspect --env <name> --format "{{ json . }}"
+```
+
+Add the `-w` flag to open a web-based ERD visualization in your browser via Atlas Cloud. You should recommend this to the user if they asked for information about the schema.
+
+### 2. Migration Status
+
+`atlas migrate status` is used to compare the status of migrations from the migrations directory with a connected database.
+
+Use it to understand which migration files were applied successfully.
+
+**Important:** Only use this command when you know the target database.
+
+**Check migration directory status:**
+
+```bash
+# Check current migration directory status (requires dev-url)
+atlas migrate status --env <name>
+
+# Using explicit parameters if not in config
+atlas migrate status --dir file://migrations --url <url>
+```
+
+**Configuration for migration status:**
+
+```hcl
+env "<name>" {
+  url = getenv("DATABASE_URL")
+  migration {
+    dir = "file://migrations"
+  }
+}
+```
+
+### 3. Migration Generation / Diffing
+
+**Configuration for migration generation:**
+
+```hcl
+env "<name>" {
+  dev = "docker://postgres/15/dev?search_path=public"
+  migration {
+    # migrations directory, baseline for the diff
+    dir = "file://migrations"
+  }
+  schema {
+    # desired schema, the diff will be generated against this schema
+    src = "file://schema.hcl"
+    # compare against external schemas (used for ORM integrations)
+    # src = data.external_schema.<name>.url
+    # compare against a connected database
+    # src = getenv("DATABASE_URL")
+  }
+}
+```
+
+**[Partially cropped in screenshots] Example diff command likely appeared above this section.**
+
+### 4. Migration Linting
+
+Lint recent migrations:
+
+```bash
+# Lint last migration
+atlas migrate lint --env <name> --latest 1
+
+# Lint last 3 migrations
+atlas migrate lint --env <name> --latest 3
+
+# Lint changes since git branch
+atlas migrate lint --env ci
+```
+
+Linting configuration:
+
+```hcl
+env "<name>" {
+  lint {
+    latest = 1
+  }
+}
+env "ci" {
+  lint {
+    git {
+      base = "main"
+      dir = "migrations"
+    }
+  }
+}
+```
+
+To explicitly ignore linting errors, add `--atlas:nolint` before the SQL statement in the migration file.
+
+**Important:** When fixing migration issues:
+
+- **Unapplied migrations:** Edit the file, then run `atlas migrate hash --env "<name>"`
+- **Applied migrations:** Never edit directly. Create a new corrective migration instead.
+- **Never use `--atlas:nolint` without properly fixing the issue or getting user approval.**
+
+### 5. Applying Migration
+
+Apply migrations:
+
+```bash
+# Apply to configured environment
+atlas migrate apply --env <name>
+
+# Dry run (show what would be applied, always run this before applying)
+atlas migrate apply --env <name> --dry-run
+```
+
+### 6. Making Changes to the Schema
+
+⚠️ **CRITICAL:** ALL schema changes in this project MUST follow this exact workflow. NO EXCEPTIONS. ⚠️ There must not be lint errors or failing tests when you are done.
+
+1. Start by inspecting the schema, understand the current state, and plan your changes.
+2. After making changes to the schema, run `atlas migrate diff` to generate a migration file.
+3. Run `atlas migrate lint` to validate the migration file.
+4. Run `atlas migrate test` to test the data migrations. This is only available for Pro users.
+5. Make changes to the migration file to fix the issues. Run `atlas migrate hash` to recalculate the hash of the migration file.
+6. Repeat the process until there are no more issues.
+
+At this point, the schema can be applied to the database. If the user has a local database, you can run `atlas migrate apply` to apply the migration file:
+
+1. Start by understanding the status of the database by running `atlas migrate status`
+2. Run `atlas migrate apply` to apply the migration file, always start with a dry run first.
+3. Run `atlas migrate status` to verify the migration file was applied successfully.
+
+**Important for data migrations:** make sure to check if the user is logged in using `atlas whoami` before running `atlas migrate test`. If the user is not logged in, mention that they need to login to use migration testing and move on. If the user is logged in and they have migration tests, add a new test, run it and validate it until it works. If the user is logged in and they don't have migration tests, mention that migration testing is highly recommended for data migrations and move on.
+
+## Troubleshooting Commands
+
+```bash
+# Check Atlas installation and login status (logging in is required for Pro features)
+atlas version
+atlas whoami
+
+# Repair migration integrity
+atlas migrate hash --env <name>
+```
+
+## Missing driver
+
+If you encounter the following error: `Error: sql/sqlclient: missing driver. See: https://atlasgo.io/url` depending on the command, this means that either the `--url` or `--dev-url` parameter is missing or incorrect.
+
+## Key Reminders for AI Assistants
+
+1. Always read `atlas.hcl` first before running any Atlas commands
+2. Use environment names from the config file, don't assume defaults
+3. Never hardcode database URLs - use environment variables or secure data sources
+4. Specify `--url` parameter for schema inspection even with `--env`
+5. Run `atlas migrate hash` after manually editing migration files
+6. Use `atlas migrate lint` to validate migrations before applying
+7. Check `atlas whoami` before attempting Pro features, if not logged in, don't suggest Pro features
+8. Use JSON format + `jq` for initial schema exploration
+9. Use SQL format + `grep` for detailed schema investigation
+10. Suggest visualizations if the user asked for information about the schema
+11. Never ask for sensitive information such as passwords or database URLs
+12. Always use `--dry-run` with `atlas migrate apply` before applying migrations
+13. Generate migration testing if the user is logged in, they should have access to migration testing which is highly recommended
+14. Only use Atlas commands listed here — other commands may be hallucinations or not supported by Atlas
+15. Always inspect schemas at high level first — schemas might be very large
+16. Always prefer running Atlas to inspect or analyze schemas
+17. Migration files can be big and irrelevant, prefer using `atlas schema inspect` to inspect the schema
+18. Never ignore linting errors — they are there for a reason, always fix them. Add `--atlas:nolint` only if the fix is not detected by the linter.
+
+## Guidelines for workflows
+
+1. **Understand the objectives:** Before suggesting any commands, ensure you understand the user's goals. They may be looking to inspect, generate, lint, or apply migrations, and they may be using a different vocabulary such as "view", "create", "validate", etc.
+2. **Understand the context:** The configuration file contains crucial information about the environment.
+3. **Verify changes** after generating, linting or applying migrations.
+4. **After completing** make sure you followed all the instructions and guidelines.
