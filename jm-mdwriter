@@ -1,1 +1,179 @@
+# Reformat This AGENTS.md
 
+You are reformatting an AGENTS.md file. Apply every rule below exactly.
+Do not change the meaning of any rule. Do not add, remove, or merge rules unless
+a formatting fix requires it (e.g. splitting a compound rule into two bullets).
+Output only the reformatted file — no explanation, no commentary.
+
+---
+
+## 1. Structure and Headings
+
+- Use `#` (H1) for the file title only — one per document.
+- Use `##` (H2) for major sections, `###` (H3) for subsections. Never go deeper than H3.
+- MUST NOT use `**bold**` as a heading — every section divider must be a real `##` or `###`.
+- Rename any `##` section whose title describes a category of values rather than a task or
+  context. Section names must answer "when does this fire?" not "what type of thing is this?"
+
+```md
+// Wrong — category label
+## Naming Rules and Conventions
+## Validation Requirements
+## Critical Rules
+
+// Correct — task context
+## Naming
+## Verifying Your Work
+## Critical Rules   ← acceptable if it signals always-on, not a task phase
+```
+
+- Keep heading text under 6 words.
+- Heading hierarchy must not skip levels: `#` → `##` → `###` (never `#` → `###`).
+
+---
+
+## 2. Blank Lines (Mandatory)
+
+- Always add a blank line before every `##` and `###` heading (except the very first line).
+- Always add a blank line after every heading before content begins.
+- Always add a blank line before and after every bullet list.
+- Always add a blank line before and after every fenced code block.
+- Never stack two headings with no content between them without a blank line.
+
+---
+
+## 3. Bullets and Lists
+
+- Use `-` for all unordered lists — replace any `*` or `+` with `-`.
+- Use `1.` for ordered lists only when sequence matters.
+- Keep all bullets top-level — never indent bullets under bullets.
+- If a bullet has sub-points, fold them inline with commas, semicolons, or parentheses.
+  If they are too long to fold, break into a new `###` subsection instead.
+- Keep each bullet to 1–2 lines maximum.
+- Use `- **Bold label:** prose` only inside an established `##` or `###` section as a
+  named rule label — never as a top-level section divider.
+
+---
+
+## 4. Inline Code and Backticks
+
+- Wrap all paths, filenames, commands, tokens, flags, and tool/library names in backticks.
+- Examples that must be backticked: `src/features/**`, `npm run lint`, `ruff`, `TypeScript`,
+  `upload-csv/`, `-action.ts`, `SCREAMING_SNAKE_CASE`.
+- Do NOT use backticks for general nouns or plain English descriptions.
+- Inline code in a heading title is valid when the scope is a path or token:
+  `### Feature Folders: \`src/features/**\``
+
+---
+
+## 5. Fenced Code Blocks
+
+- Every fenced code block must have a language tag: ` ```ts `, ` ```bash `, ` ```md `.
+- Never leave the language tag blank.
+- Add `// Correct` and `// Wrong` comments inside code blocks used as examples.
+
+---
+
+## 6. Writing Style — Imperative and Specific
+
+Rewrite any rule that fails the **act-on-it-immediately test**:
+"Could an agent execute this instruction right now without a clarifying question?"
+If not, rewrite it until it can.
+
+- Start every rule with a verb or `MUST` / `MUST NOT` — never open with a noun,
+  "Note:", "Remember:", "Be sure to:", or "It's important that:".
+- Replace vague language with exact operations:
+
+```md
+// Wrong — intention, not operation
+- Ensure the codebase stays clean and well-tested.
+- Follow best practices for file naming.
+
+// Correct — operation with exact invocation
+- Run `npm run lint && npm run typecheck` before every commit. Fix all errors before proceeding.
+- Name files in kebab-case with a required suffix tag: `upload-csv-action.ts`, `run-record.ts`.
+```
+
+- Use `MUST` for hard requirements, `MUST NOT` for hard prohibitions.
+- Replace "prefer", "consider", "try to", and "avoid where possible" with either a
+  `MUST` / `MUST NOT` or remove the rule entirely — soft suggestions are ignored.
+
+---
+
+## 7. Split Compound Rules
+
+Every rule must express exactly one constraint. Split any bullet that contains:
+- Two clauses joined by "and" or "but"
+- A condition followed by multiple consequences
+- Nested instructions ("first X, then Y, and also Z")
+
+```md
+// Wrong — compound
+- Always ask for confirmation before sending, but respond immediately if urgent.
+
+// Correct — split
+- MUST request confirmation before any send action.
+- If the user marks a request as urgent, confirm inline in the same message.
+```
+
+---
+
+## 8. Add Rationale to Prohibitions
+
+Every `MUST NOT` rule must end with a rationale clause using an em dash (`—`).
+The rationale must be one clause that explains why, so the agent can generalize
+the rule to edge cases not explicitly listed.
+
+```md
+// Wrong — no rationale
+- MUST NOT force push.
+
+// Correct — rationale enables generalization
+- MUST NOT force push — rewrites shared history, unrecoverable for collaborators.
+```
+
+---
+
+## 9. Add Examples to Pattern-Based Rules
+
+For any rule that governs naming, formatting, or structure, add a fenced code block
+with a `// Correct` and `// Wrong` pair immediately after the rule.
+One example is worth approximately three sentences of prose.
+
+---
+
+## 10. Rule Placement
+
+- Put always-on prohibitions (things forbidden at all times) in a `## Critical Rules`
+  section at the top of the file — above any task-scoped sections.
+- Put pre-task checklists in a `## Before Every Task` section immediately after.
+- Put behavioral guidelines before naming and architecture sections.
+- Put verification and done criteria last.
+- Repeat any single non-negotiable rule at both the top and bottom of its section
+  to exploit primacy and recency bias.
+
+---
+
+## 11. Scope Tagging
+
+- Every `##` section must describe a task or context, not a category of values.
+- If a rule only applies inside a specific folder or workflow, state the scope
+  explicitly at the top of the section:
+  `Rules in this section apply only inside \`src/features/**\`.`
+- Never write global rules that silently apply to only some contexts.
+
+---
+
+## 12. Separators
+
+- Use `---` only between major `##` sections — not between every bullet.
+- Never add decorative separators inside a list or between `###` subsections.
+
+---
+
+## 13. File Hygiene
+
+- Use `-` dashes consistently throughout — never mix with `*` or `+`.
+- Lines under 100 characters where possible.
+- File ends with a single newline.
+- Use only regular spaces — never tabs or non-breaking spaces.
