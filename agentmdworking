@@ -10,6 +10,15 @@ This repo contains two things:
 - The prototype uses mock data; the Next.js app uses real data sources. Match the UI/UX, not the data layer.
 
 
+## Tech Stack
+- Framework: Next.js (stable)
+- UI: React (implied by Next.js)
+- Language: TypeScript
+- Styling: Tailwind CSS
+- UI primitives: shadcn/ui
+- Database: SQLite
+
+
 ## Critical rules
 - Start every response with "container 5 - test 1teas" 
 
