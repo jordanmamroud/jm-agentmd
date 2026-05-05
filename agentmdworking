@@ -170,3 +170,33 @@ Use for **project-agnostic primitives and infrastructure** only.
 Examples: design system primitives, third-party SDK/client wrappers, generic UI primitives, env validation, logger, error tracking, app-wide config.
 
 `src/shared/**` must have zero knowledge of business workflows or entities.
+
+
+## Validation Requirements
+
+"Done" means the *task* is verifiable in the UI. The agent must test its own work in the UI before declaring the task done. Not "the code looks right."
+
+At this early stage, we are relying heavily on UI-first verification rather than automated test suites. Do not write or run unit or integration tests unless explicitly requested.
+
+### Verification layers
+
+- **Lint + typecheck** — run on every change to catch basic errors.
+- **Agent UI Verification** — The agent must start the local dev server (e.g. `npm run dev`), wait for it to compile, and then use browser tools to navigate to `localhost:3000` to interact with the UI, click buttons, and verify the UI state locally before declaring a task done.
+- **Server Log Verification** — After interacting with the UI, you must check the terminal running the dev server to ensure no hidden errors, warnings, or unhandled promise rejections were thrown.
+- **User UI Verification** — the ultimate review surface for actions the agent cannot take itself (e.g., completing OAuth flows).
+
+- For any database write/persistence work, verify the actual database contents directly after the UI flow. A UI success state is not sufficient; confirm with SQLite/admin row counts or targeted DB queries that the expected records were durably stored.
+
+
+
+### Done criteria
+
+A task is done when:
+
+- Lint and typecheck pass.
+- You have built the necessary UI components (can be a minimal, unstyled button or raw JSON dump) just enough so the backend logic can be tested visually.
+- The agent has actively exercised and verified the task in the running UI using a browser tool.
+- The agent has verified the terminal logs are clear of hidden errors.
+
+Do not declare a task done from code inspection alone.
+
