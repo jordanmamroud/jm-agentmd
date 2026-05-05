@@ -24,6 +24,17 @@ This repo contains two things:
 - When fetching data from any external source (REST API, MCP server, webhook, third-party service, etc), persist the raw response to disk before any downstream processing.
 - Before starting your task, identify all external dependencies you need to complete it. Verify they are available (e.g., API keys, permissions, database credentials, etc). If anything is missing, you must immediately HALT. You are strictly forbidden from writing workarounds, mocking data, or using placeholders. Stop and ask the user.
 
+### Forbidden workarounds (illustrative, not exhaustive)
+- Mocking, stubbing, or faking the missing piece
+- Substituting a different library, model, service, or framework
+- Generating placeholder, synthetic, sample, or example data in place of real data
+- Hardcoding values that should come from the missing source
+- Catching the error and continuing with degraded behavior
+- Leaving a `TODO` / `FIXME` and moving past the step
+- Skipping the step silently or marking it "done"
+- Implementing a stub "for now" that returns plausible output
+
+
 
 ## Naming rules and conventions
 
